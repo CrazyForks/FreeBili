@@ -2,719 +2,676 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>{{ site_config.site_name }}</title>
     <link rel="icon" href="{{ url_for('static', path='favicon.ico') }}" type="image/x-icon">
+
+    <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://testingcf.jsdelivr.net/npm/vue@2.7.16/dist/vue.min.js"></script>
     <script src="https://testingcf.jsdelivr.net/npm/artplayer@5.2.5/dist/artplayer.min.js"></script>
     <script src="https://testingcf.jsdelivr.net/npm/hls.js@1.6.10/dist/hls.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        glass: {
+                            200: 'rgba(255, 255, 255, 0.12)',
+                        }
+                    },
+                    boxShadow: {
+                        'neon': '0 0 25px rgba(255, 255, 255, 0.2)',
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+
     <style>
-        /* CSS styles are unchanged */
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            color: #333;
-            margin: 0;
-            padding: 20px;
-            background-image: url('{{ site_config.pc_background_image_url }}');
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            background-attachment: fixed;
-        }
-        a:hover {
-            text-decoration: none !important; /* 悬停时仍然不显示下划线 */
-        }
-        .blurred-bg {
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        body { background-color: #000; }
+
+        /* Matrix Canvas */
+        #matrix-canvas {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background-size: cover;
-            background-position: center;
-            background-color: rgb(255 255 255 / 0%);
-            backdrop-filter: blur(30px);
+            z-index: -2;
+        }
+
+        .bg-overlay {
+            position: fixed;
+            inset: 0;
             z-index: -1;
+            pointer-events: none;
+            background: rgba(0,0,0,0.30);
+            backdrop-filter: blur(0px);
+            -webkit-backdrop-filter: blur(0px);
+            transition: background 1.5s cubic-bezier(0.4, 0, 0.2, 1), 
+                        backdrop-filter 1.5s cubic-bezier(0.4, 0, 0.2, 1),
+                        -webkit-backdrop-filter 1.5s cubic-bezier(0.4, 0, 0.2, 1);
         }
-        .container { margin: 20px auto; }
-        h1 { text-align: center; color: #333; font-weight: 600; text-shadow: 1px 1px 2px #eee; }
-        .search-form { display: flex; gap: 15px; margin-bottom: 30px; }
-        .search-form input[type="text"] {
-            flex-grow: 1; padding: 12px 15px; font-size: 16px; border: 1px solid #ddd;
-            border-radius: 6px; box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);
-            transition: border-color 0.3s ease, box-shadow 0.3s ease; background: #ffffffe0;
-        }
-        .search-form input[type="text"]:focus { outline: none; border-color: #007bff; box-shadow: 0 0 5px rgba(0,123,255,0.25); }
-        .search-form button {
-            padding: 12px 25px; font-size: 16px; font-weight: bold; background-color: #007bffc5;
-            color: white; border: none; border-radius: 6px; cursor: pointer; transition: background-color 0.3s ease;
-        }
-        .search-form button:hover { background-color: #0057b3d3; }
-        #status {
-            position: fixed; top: 12px; left: 50%; transform: translateX(-50%);
-            background-color: #fdfdfdd8; padding: 12px 25px; border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1001; font-size: 1.1em;
-            font-weight: 500; white-space: nowrap;
-        }
-        .fade-enter-active, .fade-leave-active { transition: opacity 0.5s ease, transform 0.5s ease; }
-        .fade-enter, .fade-leave-to { opacity: 0; transform: translate(-50%, -20px); }
 
-        .results-grid {
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-            gap: 25px; margin-top: 20px;
+        .bg-overlay--searching {
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(2px);
+            -webkit-backdrop-filter: blur(2px);
         }
-        .result-card {
-            background-color: #fdfdfdeb; border: 1px solid #e0e0e0; border-radius: 10px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.06); transition: box-shadow 0.3s ease, transform 0.3s ease;
-            cursor: pointer; overflow: hidden;
-        }
-        .result-card:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
-        .poster-wrapper { position: relative; }
-        .poster-wrapper img { width: 100%; height: 270px; object-fit: cover; display: block; }
-        .card-details { padding: 12px; text-align: center; }
-        .card-details h3 {
-            margin: 5px 0; font-size: 0.8em; font-weight: 600;
-            overflow: hidden; text-overflow: ellipsis;
-        }
-        .card-source { font-size: 0.55em; color: #555; margin: 3px 0 0 0; }
-        .card-source a { color: inherit; text-decoration: none; }
-        .card-source a:hover { text-decoration: underline; color: #007bff; }
-        
-        /* --- Unified Player Modal Styles --- */
-        .modal {
-            display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%;
-            height: 100%; overflow: auto; background-color: rgba(255, 255, 255, 0.65);
-            -webkit-backdrop-filter: blur(50px); backdrop-filter: blur(50px);
-            align-items: center; justify-content: center;
-        }
-        .modal.visible { display: flex; }
 
-        .player-modal-content {
-            display: flex;
-            position: relative;
-            background-color: #fff;
-            box-shadow: 0 5px 25px rgba(0,0,0,0.2);
-            border-radius: 12px;
-            width: 90vw;
-            height: 85vh;
+        .artplayer-app { width: 100%; height: 100%; overflow: hidden; }
+
+        .layout-transition { transition: all 0.8s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+        .slide-up-enter-active, .slide-up-leave-active { transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
+        .slide-up-enter, .slide-up-leave-to { transform: translateY(100%); }
+
+        .fade-enter-active, .fade-leave-active { transition: opacity 0.5s ease; }
+        .fade-enter, .fade-leave-to { opacity: 0; }
+
+        .dropdown-enter-active, .dropdown-leave-active { transition: all 0.2s ease; }
+        .dropdown-enter, .dropdown-leave-to { opacity: 0; transform: translateY(-10px) scale(0.95); }
+
+        [v-cloak] { display: none; }
+
+        .force-rounded {
+            mask-image: radial-gradient(white, black);
+            -webkit-mask-image: -webkit-radial-gradient(white, black);
             overflow: hidden;
+            isolation: isolate;
         }
 
-        .player-modal-content .close-button {
-            cursor: pointer; position: absolute; z-index: 1001; font-weight: bold;
-            transition: color 0.3s ease; top: 5px; right: 15px; font-size: 32px;
-            color: #aaa; text-shadow: 0 0 5px white;
+        /* 自定义滚动条样式，防止默认滚动条太丑 */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
         }
-        .player-modal-content .close-button:hover { color: #333; }
-        
-        .player-area {
-            flex-grow: 1;
-            background-color: #000;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
         }
-
-        .artplayer-app { width: 100%; height: 100%; }
-
-        .episodes-sidebar {
-            flex-shrink: 0;
-            width: 320px;
-            background-color: #f7f7f7;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
         }
-        .episodes-sidebar h3 {
-            margin-top: 0; margin-bottom: 10px; font-size: 1.4em;
-            text-align: center; border-bottom: 2px solid #eee; padding-bottom: 10px;
-        }
-        
-        .source-selector-wrapper {
-            margin-bottom: 15px;
-        }
-        .source-selector-wrapper select {
-            width: 100%;
-            padding: 8px 12px;
-            font-size: 15px;
-            border-radius: 6px;
-            border: 1px solid #ccc;
-            background-color: #fff;
-        }
-
-        .episodes-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            overflow-y: auto;
-            flex-grow: 1;
-            align-content: flex-start;
-        }
-        .episodes-list button {
-            height: 38px;
-            padding: 12px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            box-sizing: border-box;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            background-color: #f1f1f1bf;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: all 0.2s ease;
-        }
-        .episodes-list button:hover {
-            background-color: #007bffbf; color: white; border-color: #007bff; transform: scale(1.05);
-        }
-        .episodes-list button.active {
-            background-color: #007bff; color: white; border-color: #007bff; font-weight: bold;
-        }
-        
-        .webview-placeholder {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            width: 100%;
-            height: 100%;
-            background-color: #e9ecef;
-            color: #495057;
-            padding: 20px;
-            box-sizing: border-box;
-        }
-        .webview-placeholder h3 {
-            margin-top: 0;
-            margin-bottom: 10px;
-            font-size: 1.5em;
-        }
-        .webview-placeholder p {
-            margin-bottom: 20px;
-            font-size: 1em;
-        }
-        .webview-button {
-            display: inline-block;
-            padding: 12px 25px;
-            font-size: 16px;
-            font-weight: bold;
-            color: #fff;
-            background-color: #007bff;
-            border: none;
-            border-radius: 6px;
-            text-decoration: none;
-            transition: background-color 0.3s ease;
-        }
-        .webview-button:hover {
-            background-color: #0056b3;
-        }
-
-        /* --- Responsive Styles --- */
-        @media (max-width: 1024px) {
-            .episodes-sidebar { width: 250px; }
-        }
-        @media (max-width: 768px) {
-            body { padding: 10px; background-image: url('{{ site_config.phone_background_image_url }}'); }
-            .container { margin: 10px auto; }
-            h1 { font-size: 1.8em; }
-            .search-form { flex-direction: column; gap: 10px; }
-            .search-form input[type="text"], .search-form button { font-size: 15px; }
-            .results-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 15px; }
-            .poster-wrapper img { height: 240px; }
-            
-            .player-modal-content {
-                flex-direction: column;
-                width: 100vw;
-                height: 100vh;
-                border-radius: 0;
-            }
-            .player-area {
-                width: 100%;
-                height: 56.25vw; /* 16:9 aspect ratio */
-                flex-grow: 0;
-            }
-            .episodes-sidebar {
-                width: 100%;
-                flex-grow: 1;
-                box-sizing: border-box;
-            }
-            .player-modal-content .close-button {
-                color: white; background-color: rgba(0,0,0,0.4); border-radius: 50%;
-                width: 35px; height: 35px; line-height: 30px; text-align: center;
-                top: 10px; right: 10px; font-size: 24px;
-            }
-        }
-        @media (max-width: 480px) {
-            .results-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
-            .poster-wrapper img { height: 200px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.4);
         }
     </style>
 </head>
-<body>
-    
-    <div id="app" class="container">
-        <div :class="{ 'blurred-bg': isBlurred }"></div>
-        <form @submit.prevent="startSearch" class="search-form">
-            <input type="text" v-model="keyword" placeholder="请输入关键词..." required>
-            <button type="submit">搜索</button>
+
+<body class="text-white font-sans overflow-x-hidden min-h-screen">
+
+<div id="app" class="relative min-h-screen" v-cloak>
+
+    <canvas id="matrix-canvas"></canvas>
+
+    <div
+        class="bg-overlay"
+        :class="{
+            'bg-overlay--searching': hasStartedSearch,
+            'bg-overlay--modal': playerModalVisible
+        }"
+        @click="playerModalVisible ? closePlayerModal() : null"
+    ></div>
+
+    <div
+        class="fixed left-0 right-0 z-50 layout-transition flex justify-center px-4"
+        :class="hasStartedSearch ? 'top-0 py-8' : 'top-[40vh]'"
+    >
+        <form
+            @submit.prevent="startSearch(true)"
+            class="relative group w-full max-w-2xl transition-all duration-700"
+            :class="{'scale-100': hasStartedSearch, '': !hasStartedSearch}"
+        >
+            <div class="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none z-10">
+                <svg class="h-5 w-5 text-white/60 transition-colors group-focus-within:text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            </div>
+
+            <input
+                type="text"
+                v-model="keyword"
+                placeholder="搜索资源..."
+                class="block w-full pl-12 pr-14 py-3 bg-glass-200 backdrop-blur-xl rounded-full text-white placeholder-white/40 focus:outline-none focus:bg-white/20 focus:shadow-neon transition-all duration-300 shadow-2xl text-base md:text-lg tracking-wide"
+                :class="{'animate-pulse-slow bg-white/15': isSearching}"
+                required
+            >
+
+            <div class="absolute right-1.5 top-1.5 bottom-1.5">
+                <button
+                    type="submit"
+                    :disabled="isSearching"
+                    class="h-full aspect-square rounded-full bg-white/5 hover:bg-white/20 backdrop-blur-md transition-all duration-300 flex items-center justify-center text-white disabled:opacity-80 disabled:cursor-not-allowed active:scale-95"
+                >
+                    <svg v-if="isSearching" class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <svg v-else class="h-5 w-5 transform -rotate-0 md:rotate-90 text-white/80 group-focus-within:text-white transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
+                </button>
+            </div>
         </form>
+    </div>
 
-        <transition name="fade">
-            <div id="status" v-if="isStatusVisible">[[ statusMessage ]]</div>
-        </transition>
-
-        <div class="results-grid">
-            <div v-for="item in aggregatedResults" :key="item.vod_douban_id" class="result-card" @click="openPlayerModal(item)">
-                <div class="poster-wrapper">
-                    <img :src="item.vod_pic" :alt="item.display_name" @error="imageOnError">
-                </div>
-                <div class="card-details">
-                    <h3>[[ item.display_name ]]</h3>
-                    <p class="card-source">
-                        <a :href="'https://movie.douban.com/subject/' + item.vod_douban_id + '/'" target="_blank" rel="noopener noreferrer" @click.stop>
-                            豆瓣ID: [[ item.vod_douban_id ]]
+    <div class="w-full max-w-7xl mx-auto px-4 md:px-8 pb-24 transition-opacity duration-1000" :class="hasStartedSearch ? 'opacity-100 pt-[7.5rem]' : 'opacity-0 hidden'">
+        <transition-group name="fade" tag="div" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-6">
+            <div
+                v-for="item in aggregatedResults"
+                :key="item.vod_douban_id"
+                @click="openPlayerModal(item)"
+                class="group relative aspect-[2/3] rounded-2xl md:rounded-3xl cursor-pointer bg-glass-100 border border-white/10 shadow-lg hover:shadow-blue-500/20 hover:border-white/30 transition-all duration-500 transform hover:-translate-y-2 force-rounded"
+            >
+                <img
+                    :src="item.vod_pic"
+                    :alt="item.display_name"
+                    @error="imageOnError"
+                    class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                >
+                <div class="absolute inset-x-0 bottom-0 p-3 md:p-4 bg-gradient-to-t from-black/90 via-black/60 to-transparent backdrop-blur-[1px]">
+                    <h3 class="text-white font-bold text-sm md:text-base truncate leading-tight mb-1">[[ item.display_name ]]</h3>
+                    <div class="flex items-center justify-between text-xs text-gray-300/80 relative z-20">
+                        <span class="bg-white/10 px-2 py-0.5 rounded-full border border-white/5 backdrop-blur-md">
+                            [[ getSourceCount(item) ]] 源
+                        </span>
+                        <a
+                            :href="'https://movie.douban.com/subject/' + item.vod_douban_id + '/'"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            @click.stop
+                            class="opacity-70 hover:opacity-100 hover:text-blue-400  transition-all cursor-pointer flex items-center gap-1"
+                        >
+                            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                            豆瓣
                         </a>
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        <div id="playerModal" class="modal" :class="{ visible: playerModalVisible }" @click.self="closePlayerModal">
-            <div class="player-modal-content" v-if="selectedItem && selectedSource">
-                <span class="close-button" @click="closePlayerModal">&times;</span>
-                
-                <div class="player-area">
-                    <div v-if="isWebView" class="webview-placeholder">
-                        <h3>此内容需要在原网页播放</h3>
-                        <p>为确保正常观看，请点击下方按钮在新标签页中打开。</p>
-                        <a :href="activeVideo.video_url" target="_blank" rel="noopener noreferrer" class="webview-button">
-                            在新标签页中打开
-                        </a>
-                    </div>
-                    <div v-else class="artplayer-app"></div>
-                </div>
-                
-                <div class="episodes-sidebar">
-                    <h3>[[ selectedItem.display_name ]]</h3>
-                    
-                    <div v-if="selectedItem.sources.length > 1" class="source-selector-wrapper">
-                        <select v-model="selectedSource">
-                            <option v-for="source in sortedSources" :key="source.source_name" :value="source">
-                                [[ source.source_name ]] ([[ source.episode_count ]] 集) - [[ source.resolution_display ]]
-                            </option>
-                        </select>
-                    </div>
-                    
-                    <div class="episodes-list">
-                        <button v-for="video in selectedSource.videos"
-                                :key="video.name"
-                                @click="selectEpisode(video)"
-                                :class="{ active: activeVideo === video }">
-                            [[ video.name ]]
-                        </button>
                     </div>
                 </div>
             </div>
+        </transition-group>
+
+        <div v-if="!isSearching && hasStartedSearch && aggregatedResults.length === 0" class="text-center py-20 text-white/40 animate-pulse">
+            <p>未找到相关内容</p>
         </div>
     </div>
 
-    <script>
-        // Helper functions (unchanged)
-        function playM3u8(video, url, art) {
-            if (Hls.isSupported()) {
-                if (art.hls) art.hls.destroy();
-                const hls = new Hls();
-                hls.loadSource(url);
-                hls.attachMedia(video);
-                art.hls = hls;
-                art.on('destroy', () => hls.destroy());
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                video.src = url;
-            } else {
-                art.notice.show = 'Unsupported playback format: m3u8';
-            }
-        }
+    <transition name="slide-up">
+        <div
+            v-if="playerModalVisible"
+            class="fixed inset-0 z-[100] bg-black"
+        >
+            <div class="w-full h-full flex flex-col md:flex-row bg-[#0a0a0a] overflow-hidden relative">
 
-        async function getVideoResolution(url) {
-            // This function remains unchanged
-            const lowerCaseUrl = url.toLowerCase();
-            if (lowerCaseUrl.endsWith('.m3u8')) {
-                try {
-                    const response = await fetch(url);
-                    if (!response.ok) return '未知';
-                    const manifest = await response.text();
-                    const lines = manifest.split('\n');
-                    let bestResolution = { width: 0, height: 0 };
-                    for (const line of lines) {
-                        if (line.includes('RESOLUTION=')) {
-                            const match = line.match(/RESOLUTION=(\d+)x(\d+)/);
-                            if (match) {
-                                const width = parseInt(match[1], 10);
-                                const height = parseInt(match[2], 10);
-                                if (width * height > bestResolution.width * bestResolution.height) {
-                                    bestResolution = { width, height };
-                                }
-                            }
-                        }
-                    }
-                    return bestResolution.width > 0 ? `${bestResolution.height}P` : '未知';
-                } catch (error) {
-                    console.error('Failed to parse M3U8 for resolution:', url, error);
-                    return '获取失败';
-                }
-            } else if (lowerCaseUrl.endsWith('.mp4')) {
-                return new Promise((resolve) => {
-                    const video = document.createElement('video');
-                    video.preload = 'metadata';
-                    video.onloadedmetadata = () => { resolve(`${video.videoHeight}P`); video.remove(); };
-                    video.onerror = () => { resolve('获取失败'); video.remove(); };
-                    video.src = url;
+                <button
+                    @click="closePlayerModal"
+                    class="absolute top-4 right-4 md:top-6 md:right-6 z-[110] w-10 h-10 md:w-12 md:h-12 rounded-full bg-black/60 hover:bg-white/20 text-white flex items-center justify-center transition-all border border-white/10 group backdrop-blur-md"
+                >
+                    <svg class="w-5 h-5 md:w-6 md:h-6 group-hover:rotate-90 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+
+                <div class="w-full h-[40vh] md:h-full md:w-3/4 bg-black relative flex items-center justify-center">
+                    <div v-if="isWebView" class="flex flex-col items-center text-center p-8">
+                        <h3 class="text-xl font-bold text-white mb-2">需要跳转播放</h3>
+                        <p class="text-white/50 mb-6 text-sm">由于源限制，无法在当前窗口播放</p>
+                        <a :href="activeVideo.video_url" target="_blank" class="px-8 py-3 bg-blue-600 rounded-xl text-white font-medium hover:bg-blue-500 transition-all shadow-lg shadow-blue-900/40">在新窗口打开</a>
+                    </div>
+                    <div v-else class="artplayer-app"></div>
+                </div>
+
+                <div class="w-full flex-grow md:h-full md:w-1/4 bg-[#1a1a1a]/95 md:bg-[#1a1a1a]/80 backdrop-blur-3xl border-t md:border-t-0 md:border-l border-white/5 flex flex-col relative z-[105]">
+
+                    <div class="p-5 md:p-8 border-b border-white/5 shrink-0">
+                        <h2 class="text-lg md:text-2xl font-bold text-white mb-4 md:mb-6 pr-10 leading-snug">
+                            [[ selectedItem.display_name ]]
+                        </h2>
+
+                        <div v-if="selectedItem.sources.length > 0" class="relative z-50">
+                            <label class="text-xs text-white/40 uppercase tracking-wider font-semibold mb-2 block pl-1">播放线路</label>
+
+                            <button
+                                @click.stop="toggleSourceDropdown"
+                                class="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-left text-white py-3 px-4 rounded-xl flex items-center justify-between transition-all active:scale-[0.99]"
+                            >
+                                <span class="truncate text-sm font-medium">
+                                    <span class="text-blue-400 mr-2">[[ selectedSource?.source_name ]]</span>
+                                    <span class="text-white/50 text-xs">([[ selectedSource?.episode_count ]]集)</span>
+                                </span>
+                                <svg class="w-4 h-4 text-white/50 transition-transform duration-300" :class="{'rotate-180': isDropdownOpen}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
+                            </button>
+
+                            <div v-if="isDropdownOpen" class="fixed inset-0 z-40" @click="isDropdownOpen = false"></div>
+                            <transition name="dropdown">
+                                <div v-if="isDropdownOpen" class="absolute top-full left-0 w-full mt-2 bg-[#2a2a2a]/95 backdrop-blur-2xl border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 max-h-64 overflow-y-auto custom-scrollbar ring-1 ring-black/20">
+                                    <div
+                                        v-for="source in sortedSources"
+                                        :key="source.source_name"
+                                        @click="selectSource(source)"
+                                        class="px-4 py-3 text-sm cursor-pointer border-b border-white/5 last:border-0 hover:bg-white/10 transition-colors flex items-center justify-between group"
+                                        :class="{'bg-white/5': selectedSource === source}"
+                                    >
+                                        <span class="font-medium" :class="selectedSource === source ? 'text-blue-400' : 'text-white'">
+                                            [[ source.source_name ]]
+                                            </span>
+                                        <svg v-if="selectedSource === source" class="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
+                                    </div>
+                                </div>
+                            </transition>
+                        </div>
+                    </div>
+
+                    <div class="flex-grow overflow-y-auto p-4 md:p-6 custom-scrollbar content-start">
+                        <div class="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                            <button
+                                v-for="video in selectedSource?.videos"
+                                :key="video.name"
+                                @click="selectEpisode(video)"
+                                class="h-10 px-1 rounded-lg text-sm font-medium transition-all duration-200 border truncate flex items-center justify-center"
+                                :class="activeVideo === video
+                                    ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-900/40'
+                                    : 'bg-white/5 border-transparent text-gray-300 hover:bg-white/10 hover:text-white'"
+                                :title="video.name"
+                            >
+                                [[ video.name ]]
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="p-4 border-t border-white/5 text-center">
+                        <div class="text-[10px] text-white/20 uppercase tracking-[0.2em]"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </transition>
+
+</div>
+
+<script>
+    function playM3u8(video, url, art) {
+        if (Hls.isSupported()) {
+            if (art.hls) art.hls.destroy();
+            const hls = new Hls();
+            hls.loadSource(url);
+            hls.attachMedia(video);
+            art.hls = hls;
+            art.on('destroy', () => hls.destroy());
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+            video.src = url;
+        } else {
+            art.notice.show = '不支持的格式';
+        }
+    }
+
+    async function getVideoResolution(url) {
+        const lowerCaseUrl = url.toLowerCase();
+        if (lowerCaseUrl.endsWith('.m3u8')) return '高清';
+        return '网页';
+    }
+
+    new Vue({
+        el: '#app',
+        delimiters: ['[[', ']]'],
+        data: {
+            keyword: '',
+            isSearching: false,
+            hasStartedSearch: false,
+            aggregatedResults: [],
+            eventSource: null,
+            artInstance: null,
+            playerModalVisible: false,
+            selectedItem: null,
+            activeVideo: null,
+            selectedSource: null,
+            isDropdownOpen: false,
+            doubanIdToOpen: null,
+            originalTitle: '',
+            currentSearchTitle: '',
+
+            // Matrix 配置
+            matrixConfig: {
+                fontSize: 20,
+                color: '#0F0',
+                fontFamily: 'KaiTi, STKaiti, "Microsoft YaHei"',
+                speed: 50,
+                fade: 0.05,
+                text: `君不见黄河之水天上来奔流到海不复回
+君不见高堂明镜悲白发朝如青丝暮成雪
+人生得意须尽欢莫使金樽空对月
+天生我材必有用千金散尽还复来
+烹羊宰牛且为乐会须一饮三百杯
+岑夫子丹丘生将进酒杯莫停
+与君歌一曲请君为我倾耳听
+钟鼓馔玉不足贵但愿长醉不复醒
+古来圣贤皆寂寞惟有饮者留其名
+陈王昔时宴平乐斗酒十千恣欢谑
+主人何为言少钱径须沽取对君酌
+五花马千金裘呼儿将出换美酒与尔同销万古愁
+`
+            },
+            canvasContext: null,
+            canvasWidth: 0,
+            canvasHeight: 0,
+            drops: [],
+            columnTextIndices: [],
+            charArray: [],
+            matrixInterval: null,
+            columnsCount: 0,
+        },
+        computed: {
+            isWebView() {
+                if (!this.activeVideo || !this.activeVideo.video_url) return false;
+                const url = this.activeVideo.video_url.toLowerCase();
+                return !url.endsWith('.m3u8') && !url.endsWith('.mp4');
+            },
+            sortedSources() {
+                if (!this.selectedItem || !this.selectedItem.sources) return [];
+                return this.selectedItem.sources.filter(s => s.episode_count > 0).sort((a, b) => {
+                    return b.videos.length - a.videos.length;
                 });
-            } else { return '网页'; }
-        }
+            }
+        },
+        watch: {
+            activeVideo(newVideo) {
+                if (this.artInstance) {
+                    this.artInstance.destroy();
+                    this.artInstance = null;
+                }
+                if (!newVideo) return;
+                if (!this.isWebView) {
+                    this.$nextTick(() => { this.initArtplayer(newVideo); });
+                }
+            }
+        },
+        mounted() {
+            this.originalTitle = document.title;
 
-        new Vue({
-            el: '#app',
-            delimiters: ['[[', ']]'],
-            data: {
-                isBlurred: false,
-                keyword: '',
-                statusMessage: '',
-                isStatusVisible: false, 
-                aggregatedResults: [],
-                eventSource: null,
-                artInstance: null,
-                playerModalVisible: false,
-                selectedItem: null,
-                activeVideo: null,
-                selectedSource: null,
-                doubanIdToOpen: null,
-                originalTitle: '', // NEW: Store original page title
-                currentSearchTitle: '', // NEW: Store title for current search results
+            this.initMatrix();
+            window.addEventListener('resize', this.resizeMatrix);
+
+            const params = this.getHashParams();
+            if (params.keyword) {
+                this.keyword = params.keyword;
+                if (params.douban_id) this.doubanIdToOpen = params.douban_id;
+                this.hasStartedSearch = true;
+                this.startSearch(false);
+            }
+        },
+        beforeDestroy() {
+            if (this.matrixInterval) clearInterval(this.matrixInterval);
+            window.removeEventListener('resize', this.resizeMatrix);
+        },
+        methods: {
+            initMatrix() {
+                const canvas = document.getElementById('matrix-canvas');
+                this.canvasContext = canvas.getContext('2d');
+
+                let processedText = this.matrixConfig.text.replace(/[\r\n]+/g, '　　');
+                processedText = processedText.replace(/[，。？！：；“”‘’（）《》【】、,.\?!:;"'()]/g, '　');
+                processedText = processedText.replace(/[ \t]+/g, '');
+                this.charArray = processedText.split('');
+                if (this.charArray.length === 0) this.charArray = ['空'];
+
+                this.resizeMatrix(true); // 只有这里传递 true 表示强制初始化
+                this.matrixInterval = setInterval(this.drawMatrix, this.matrixConfig.speed);
             },
-            computed: {
-                isWebView() {
-                    if (!this.activeVideo || !this.activeVideo.video_url) return false;
-                    const url = this.activeVideo.video_url.toLowerCase();
-                    return !url.endsWith('.m3u8') && !url.endsWith('.mp4');
-                },
-                sortedSources() {
-                    if (!this.selectedItem || !this.selectedItem.sources) return [];
-                    const playableSources = this.selectedItem.sources.filter(s => s.episode_count > 0);
-                    return playableSources.sort((a, b) => {
-                        const resA = this.parseResolution(a.resolution);
-                        const resB = this.parseResolution(b.resolution);
-                        return resB - resA; 
+
+            // 修改：修复窗口调整大小时雨滴重置的问题
+            resizeMatrix(isInitial = false) {
+                const canvas = document.getElementById('matrix-canvas');
+                // resize 事件触发时 isInitial 是一个 Event 对象，需修正判断逻辑
+                const isForceInit = isInitial === true;
+
+                this.canvasWidth = canvas.width = window.innerWidth;
+                this.canvasHeight = canvas.height = window.innerHeight;
+
+                const newColumns = Math.max(1, Math.floor(this.canvasWidth / this.matrixConfig.fontSize));
+                
+                // 如果是强制初始化，或之前没有数据
+                if (isForceInit || this.drops.length === 0) {
+                    this.columnsCount = newColumns;
+                    this.drops = new Array(newColumns);
+                    this.columnTextIndices = new Array(newColumns);
+                    for (let i = 0; i < newColumns; i++) {
+                        this.drops[i] = Math.random() * -100;
+                        this.columnTextIndices[i] = Math.floor(Math.random() * this.charArray.length);
+                    }
+                } else {
+                    // 动态调整数组大小，保留已有数据
+                    if (newColumns > this.columnsCount) {
+                        // 变宽了，填充新的列
+                        for (let i = this.columnsCount; i < newColumns; i++) {
+                            this.drops[i] = Math.random() * -100; // 新列从随机位置开始
+                            this.columnTextIndices[i] = Math.floor(Math.random() * this.charArray.length);
+                        }
+                    } else if (newColumns < this.columnsCount) {
+                        // 变窄了，截断数组 (JavaScript 数组长度缩减会自动截断)
+                        this.drops.length = newColumns;
+                        this.columnTextIndices.length = newColumns;
+                    }
+                    // 更新列数记录
+                    this.columnsCount = newColumns;
+                }
+            },
+
+            drawMatrix() {
+                const ctx = this.canvasContext;
+                const { fontSize, color, fontFamily, fade } = this.matrixConfig;
+
+                ctx.fillStyle = `rgba(0, 0, 0, ${fade})`;
+                ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+
+                ctx.fillStyle = color;
+                ctx.font = `600 ${fontSize}px ${fontFamily}`;
+
+                for (let i = 0; i < this.drops.length; i++) {
+                    const charIndex = this.columnTextIndices[i];
+                    // 增加安全检查，防止索引越界
+                    if (charIndex !== undefined) {
+                        const text = this.charArray[charIndex % this.charArray.length]; // 取模防止溢出
+                        const x = i * fontSize;
+                        const y = this.drops[i] * fontSize;
+
+                        ctx.fillText(text, x, y);
+
+                        if (y > this.canvasHeight && Math.random() > 0.975) {
+                            this.drops[i] = 0;
+                        }
+
+                        this.drops[i]++;
+                        this.columnTextIndices[i]++;
+                    }
+                }
+            },
+
+            toggleSourceDropdown() {
+                this.isDropdownOpen = !this.isDropdownOpen;
+            },
+            selectSource(source) {
+                this.selectedSource = source;
+                this.isDropdownOpen = false;
+                this.findAndSelectEpisode(source);
+            },
+
+            getSourceCount(item) {
+                return item.sources ? item.sources.length : 0;
+            },
+            getHashParams() {
+                const params = {};
+                const hashString = window.location.hash.substring(1);
+                if (hashString) {
+                    hashString.split('&').forEach(pair => {
+                        const parts = pair.split('=');
+                        if (parts.length === 2) params[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1]);
                     });
                 }
+                return params;
             },
-            watch: {
-                activeVideo(newVideo) {
-                    if (this.artInstance) {
-                        this.artInstance.destroy();
-                        this.artInstance = null;
-                    }
-                    if (!newVideo) return;
-                    if (!this.isWebView) {
-                        this.$nextTick(() => {
-                            this.initArtplayer(newVideo);
-                        });
-                    }
-                },
-                selectedSource(newSource, oldSource) {
-                    if (newSource && newSource !== oldSource) {
-                        this.findAndSelectEpisode(newSource);
-                    }
-                },
-            },
-            mounted() {
-                this.originalTitle = document.title; // NEW: Save initial title
-                const params = this.getHashParams();
-                if (params.keyword) {
-                    this.keyword = params.keyword;
-                    if (params.douban_id) {
-                        this.doubanIdToOpen = params.douban_id;
-                    }
-                    this.startSearch(false);
+            updateHashParams(paramsToUpdate) {
+                let currentParams = this.getHashParams();
+                for (const key in paramsToUpdate) {
+                    const value = paramsToUpdate[key];
+                    if (value === null) delete currentParams[key];
+                    else currentParams[key] = value;
                 }
+                const newHash = Object.keys(currentParams).map(key => `${encodeURIComponent(key)}=${encodeURIComponent(currentParams[key])}`).join('&');
+                const newUrl = newHash ? `${window.location.pathname}${window.location.search}#${newHash}` : `${window.location.pathname}${window.location.search}`;
+                history.replaceState(null, '', newUrl);
             },
-            methods: {
-                getHashParams() {
-                    const params = {};
-                    const hashString = window.location.hash.substring(1);
-                    if (hashString) {
-                        hashString.split('&').forEach(pair => {
-                            const parts = pair.split('=');
-                            if (parts.length === 2) {
-                                params[decodeURIComponent(parts[0])] = decodeURIComponent(parts[1]);
+
+            startSearch(updateHash = true) {
+                if (this.eventSource) this.eventSource.close();
+
+                this.hasStartedSearch = true;
+                this.aggregatedResults = [];
+
+                if (updateHash) this.updateHashParams({ keyword: this.keyword, douban_id: null });
+
+                this.currentSearchTitle = `[搜索结果] ${this.keyword}`;
+                document.title = `[搜索中...] ${this.keyword}`;
+
+                this.isSearching = true;
+
+                const url = `/search?keyword=${encodeURIComponent(this.keyword)}`;
+                this.eventSource = new EventSource(url);
+
+                this.eventSource.onmessage = async (event) => {
+                    const sourceData = JSON.parse(event.data);
+                    if (!sourceData || !sourceData.result || sourceData.result.length === 0) return;
+
+                    const processedItems = sourceData.result.map(item => {
+                        item.source_name = sourceData.name;
+                        item.episode_count = item.videos ? item.videos.length : 0;
+                        item.resolution = '检测中...';
+                        item.resolution_display = '高清';
+                        return item;
+                    });
+
+                    processedItems.forEach(item => {
+                        if (!item.vod_douban_id) return;
+                        const existingMovie = this.aggregatedResults.find(movie => movie.vod_douban_id === item.vod_douban_id);
+
+                        if (existingMovie) {
+                            existingMovie.sources.push(item);
+                            if (item.name && item.name.length < existingMovie.display_name.length) {
+                                existingMovie.display_name = item.name;
                             }
-                        });
-                    }
-                    return params;
-                },
-                updateHashParams(paramsToUpdate) {
-                    let currentParams = this.getHashParams();
-                    for (const key in paramsToUpdate) {
-                        const value = paramsToUpdate[key];
-                        if (value === null || value === undefined) {
-                            delete currentParams[key];
                         } else {
-                            currentParams[key] = value;
+                            this.aggregatedResults.push({
+                                display_name: item.name,
+                                vod_douban_id: item.vod_douban_id,
+                                vod_pic: item.vod_pic,
+                                sources: [item]
+                            });
                         }
-                    }
-                    const newHash = Object.keys(currentParams)
-                        .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(currentParams[key])}`)
-                        .join('&');
-                    
-                    const newUrl = newHash ? `${window.location.pathname}${window.location.search}#${newHash}` : `${window.location.pathname}${window.location.search}`;
-                    history.replaceState(null, '', newUrl);
-                },
-                startSearch(updateHash = true) {
-                    if (this.eventSource) this.eventSource.close();
-                    this.aggregatedResults = [];
-                    
-                    if (updateHash) {
-                        this.updateHashParams({ keyword: this.keyword, douban_id: null });
-                    }
-                    
-                    // MODIFIED: Update page title on search start
-                    this.currentSearchTitle = `[搜索结果] ${this.keyword}`;
-                    document.title = `[搜索中] ${this.keyword}`;
-                    
-                    this.statusMessage = '🔍 正在努力搜索中，请稍候...';
-                    this.isStatusVisible = true;
-                    const url = `/search?keyword=${encodeURIComponent(this.keyword)}`;
-                    this.eventSource = new EventSource(url);
-                    this.isBlurred = true;
-
-                    this.eventSource.onmessage = async (event) => {
-                        const sourceData = JSON.parse(event.data);
-                        if (!sourceData || !sourceData.result || sourceData.result.length === 0) return;
-
-                        const processedItems = await Promise.all(sourceData.result.map(async (item) => {
-                            item.source_name = sourceData.name;
-                            item.episode_count = item.videos ? item.videos.length : 0;
-                            
-                            let resolution = '无视频源';
-                            if (item.episode_count > 0) {
-                                resolution = await getVideoResolution(item.videos[0].video_url);
-                            }
-                            item.resolution = resolution;
-                            item.resolution_display = resolution === '网页' ? '跳转网页播放' : resolution;
-
-                            return item;
-                        }));
-
-                        processedItems.forEach(item => {
-                            if (!item.vod_douban_id) return;
-                            const existingMovie = this.aggregatedResults.find(movie => movie.vod_douban_id === item.vod_douban_id);
-                            if (existingMovie) {
-                                existingMovie.sources.push(item);
-                            } else {
-                                this.aggregatedResults.push({
-                                    display_name: item.name,
-                                    vod_douban_id: item.vod_douban_id,
-                                    vod_pic: item.vod_pic,
-                                    sources: [item]
-                                });
-                            }
-                        });
-                    };
-
-                    this.eventSource.onerror = () => {
-                        this.statusMessage = '搜索完成';
-                        document.title = this.currentSearchTitle; // MODIFIED: Update title on search complete
-                        setTimeout(() => { this.isStatusVisible = false; }, 2000);
-                        this.eventSource.close();
-
-                        if (this.doubanIdToOpen) {
-                            const foundItem = this.aggregatedResults.find(item => item.vod_douban_id == this.doubanIdToOpen);
-                            if (foundItem) {
-                                this.openPlayerModal(foundItem);
-                            } else {
-                                this.showStatus(`未找到豆瓣ID为 ${this.doubanIdToOpen} 的影片`, 3000);
-                            }
-                            this.doubanIdToOpen = null; // Reset after attempting to open
-                        }
-                    };
-                },
-                parseResolution(res) {
-                    if (typeof res !== 'string') return -3;
-                    if (res.includes('P')) {
-                        return parseInt(res, 10) || 0;
-                    }
-                    if (res === '网页') return -2;
-                    if (res === '未知') return -1;
-                    return 0;
-                },
-                
-                // ##################################################
-                // ### START OF NEW/MODIFIED METHODS ###
-                // ##################################################
-                
-                // NEW: Saves the last played source name for a given douban ID
-                saveLastPlayedSource(doubanId, sourceName) {
-                    if (!doubanId || !sourceName) return;
-                    try {
-                        localStorage.setItem(`lastSource_${doubanId}`, sourceName);
-                    } catch (e) {
-                        console.error("Failed to save last source to localStorage:", e);
-                    }
-                },
-
-                // NEW: Retrieves the last played source name for a given douban ID
-                getLastPlayedSource(doubanId) {
-                    if (!doubanId) return null;
-                    try {
-                        return localStorage.getItem(`lastSource_${doubanId}`);
-                    } catch (e) {
-                        console.error("Failed to get last source from localStorage:", e);
-                        return null;
-                    }
-                },
-
-                // MODIFIED: Saves episode name for a specific source
-                savePlaybackPosition(doubanId, sourceName, episodeName) {
-                    if (!doubanId || !sourceName || !episodeName) return;
-                    const key = `playbackPosition_${doubanId}_${sourceName}`;
-                    try {
-                        localStorage.setItem(key, episodeName);
-                    } catch (e) {
-                        console.error("Failed to save playback position to localStorage:", e);
-                    }
-                },
-
-                // MODIFIED: Retrieves episode name for a specific source
-                getPlaybackPosition(doubanId, sourceName) {
-                    if (!doubanId || !sourceName) return null;
-                    const key = `playbackPosition_${doubanId}_${sourceName}`;
-                    try {
-                        return localStorage.getItem(key);
-                    } catch (e) {
-                        console.error("Failed to get playback position from localStorage:", e);
-                        return null;
-                    }
-                },
-                
-                // MODIFIED: Now finds the last played source first, then the episode
-                openPlayerModal(aggregatedItem) {
-                    this.selectedItem = aggregatedItem; 
-                    document.title = `${aggregatedItem.display_name} ${aggregatedItem.vod_douban_id}`; // Title change
-
-                    this.$nextTick(() => {
-                        if (!this.sortedSources || this.sortedSources.length === 0) {
-                            this.showStatus("该项目没有可播放的视频源");
-                            this.selectedItem = null;
-                            document.title = this.currentSearchTitle || this.originalTitle; // Revert title
-                            return;
-                        }
-
-                        this.playerModalVisible = true;
-                        this.updateHashParams({ douban_id: aggregatedItem.vod_douban_id });
-
-                        const lastSourceName = this.getLastPlayedSource(aggregatedItem.vod_douban_id);
-                        let initialSource = null;
-                        
-                        if (lastSourceName) {
-                           initialSource = this.sortedSources.find(s => s.source_name === lastSourceName);
-                        }
-                        
-                        // If saved source isn't found or doesn't exist, default to the best resolution
-                        if (!initialSource) {
-                            initialSource = this.sortedSources[0];
-                        }
-                        
-                        this.selectedSource = initialSource;
-                        // The watcher on `selectedSource` will then call `findAndSelectEpisode`
                     });
-                },
+                };
 
-                // MODIFIED: Finds last played episode for the currently selected source
-                findAndSelectEpisode(source) {
-                    if (!source || !source.videos || source.videos.length === 0) {
-                        this.activeVideo = null;
+                this.eventSource.onerror = () => {
+                    this.isSearching = false;
+                    document.title = this.currentSearchTitle;
+                    this.eventSource.close();
+                    if (this.doubanIdToOpen) {
+                        const foundItem = this.aggregatedResults.find(item => item.vod_douban_id == this.doubanIdToOpen);
+                        if (foundItem) this.openPlayerModal(foundItem);
+                        this.doubanIdToOpen = null;
+                    }
+                };
+            },
+
+            saveLastPlayedSource(doubanId, sourceName) {
+                try { localStorage.setItem(`lastSource_${doubanId}`, sourceName); } catch (e) {}
+            },
+            getLastPlayedSource(doubanId) {
+                try { return localStorage.getItem(`lastSource_${doubanId}`); } catch (e) { return null; }
+            },
+            savePlaybackPosition(doubanId, sourceName, episodeName) {
+                try { localStorage.setItem(`pos_${doubanId}_${sourceName}`, episodeName); } catch (e) {}
+            },
+            getPlaybackPosition(doubanId, sourceName) {
+                try { return localStorage.getItem(`pos_${doubanId}_${sourceName}`); } catch (e) { return null; }
+            },
+
+            openPlayerModal(aggregatedItem) {
+                this.selectedItem = aggregatedItem;
+                document.title = `播放 - ${aggregatedItem.display_name}`;
+                this.$nextTick(() => {
+                    if (!this.sortedSources.length) {
+                        alert("暂无有效源");
                         return;
                     }
-                    const lastPlayedEpisodeName = this.getPlaybackPosition(
-                        this.selectedItem.vod_douban_id,
-                        source.source_name
-                    );
-                    
-                    let episodeToPlay = null;
-                    if (lastPlayedEpisodeName) {
-                        episodeToPlay = source.videos.find(v => v.name === lastPlayedEpisodeName);
-                    }
-                    
-                    this.selectEpisode(episodeToPlay || source.videos[0]);
-                },
+                    this.playerModalVisible = true;
+                    // 修改：打开播放器时禁止 body 滚动，解决滚动条打架问题
+                    document.body.style.overflow = 'hidden';
 
-                // MODIFIED: Now also saves the source name when an episode is selected
-                selectEpisode(video) {
-                    this.activeVideo = video;
-                    if (this.selectedItem && this.selectedSource && video) {
-                        // Save the last played episode for this specific source
-                        this.savePlaybackPosition(
-                            this.selectedItem.vod_douban_id,
-                            this.selectedSource.source_name,
-                            video.name
-                        );
-                        // Also save this source as the last one used for this movie
-                        this.saveLastPlayedSource(
-                            this.selectedItem.vod_douban_id,
-                            this.selectedSource.source_name
-                        );
-                    }
-                },
+                    this.updateHashParams({ douban_id: aggregatedItem.vod_douban_id });
 
-                // MODIFIED: Resets page title on close
-                closePlayerModal() {
-                    this.playerModalVisible = false;
+                    const lastSource = this.getLastPlayedSource(aggregatedItem.vod_douban_id);
+                    let sourceToUse = this.sortedSources.find(s => s.source_name === lastSource) || this.sortedSources[0];
+                    this.selectSource(sourceToUse);
+                });
+            },
+            findAndSelectEpisode(source) {
+                if (!source || !source.videos.length) return;
+                const lastEp = this.getPlaybackPosition(this.selectedItem.vod_douban_id, source.source_name);
+                const ep = source.videos.find(v => v.name === lastEp) || source.videos[0];
+                this.selectEpisode(ep);
+            },
+            selectEpisode(video) {
+                this.activeVideo = video;
+                this.savePlaybackPosition(this.selectedItem.vod_douban_id, this.selectedSource.source_name, video.name);
+                this.saveLastPlayedSource(this.selectedItem.vod_douban_id, this.selectedSource.source_name);
+            },
+            closePlayerModal() {
+                this.playerModalVisible = false;
+                // 修改：关闭播放器时恢复 body 滚动
+                document.body.style.overflow = '';
+                
+                this.isDropdownOpen = false;
+                setTimeout(() => {
                     this.selectedItem = null;
                     this.activeVideo = null;
-                    this.selectedSource = null;
-                    this.updateHashParams({ douban_id: null });
-                    document.title = this.currentSearchTitle || this.originalTitle;
-                },
-                
-                // ##################################################
-                // ### END OF NEW/MODIFIED METHODS ###
-                // ##################################################
-
-                initArtplayer(video) {
-                    const playerOptions = {
-                        container: '.artplayer-app',
+                }, 400);
+                this.updateHashParams({ douban_id: null });
+                document.title = this.currentSearchTitle || this.originalTitle;
+                if (this.artInstance) {
+                    this.artInstance.destroy();
+                    this.artInstance = null;
+                }
+            },
+            initArtplayer(video) {
+                this.$nextTick(() => {
+                    const container = document.querySelector('.artplayer-app');
+                    if (!container) return;
+                    const opt = {
+                        container: container,
                         url: video.video_url,
-                        title: `${this.selectedItem.display_name} (${this.selectedSource.source_name}) - ${video.name}`,
-                        autoplay: false,
+                        title: video.name,
+                        autoplay: true,
                         autoSize: false,
-                        setting: true,
-                        flip: true,
-                        playbackRate: true,
-                        aspectRatio: true,
                         fullscreen: true,
                         fullscreenWeb: true,
+                        theme: '#3b82f6',
+                        lang: 'zh-cn',
                     };
-
                     if (video.video_url.toLowerCase().endsWith('.m3u8')) {
-                        playerOptions.type = 'm3u8';
-                        playerOptions.customType = { m3u8: playM3u8 };
+                        opt.type = 'm3u8';
+                        opt.customType = { m3u8: playM3u8 };
                     }
-                    
-                    this.artInstance = new Artplayer(playerOptions);
-                },
-                imageOnError(event) {
-                    event.target.src = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
-                },
-                showStatus(message, duration = 2000) {
-                    this.statusMessage = message;
-                    this.isStatusVisible = true;
-                    setTimeout(() => { this.isStatusVisible = false; }, duration);
-                }
+                    this.artInstance = new Artplayer(opt);
+                });
+            },
+            imageOnError(e) {
+                e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25'%3E%3Crect width='100%25' height='100%25' fill='%23333'/%3E%3C/svg%3E";
             }
-        });
-    </script>
+        }
+    });
+</script>
+
 </body>
 </html>

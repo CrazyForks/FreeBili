@@ -19,6 +19,7 @@
 ## 页面展示
 ![开始界面1](docs/1.png)
 ![开始界面2](docs/2.png)
+![开始界面3](docs/3.png)
 
 ## Docker 部署 (推荐)
 ```
@@ -34,7 +35,7 @@ uv run fastapi dev main.py
 ```
 ## 配置文件
 访问 ``ip + /docs`` 页面，``post /config``接口，上传 config.json
-![配置界面](docs/3.png)
+![配置界面](docs/api.png)
 
 ## json配置文件参考如下
 ```
